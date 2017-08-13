@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-CRC32 generator and checker. 
+
+CRC32 generator and checker.
+ 
 2017-13-08 v0.6
+
+Requires Python 3.5+.
 
 Copyright (c) 2009 Taoufik El Aoumari (forked from version 0.2, 2009-01-25)
 Copyright (c) 2011 Nekmo
@@ -237,7 +241,8 @@ class XAttrCRCStorage(CRCStorageInterface):
 
     def get_file_repr(self, file_name: str, match_color: str,
                       declared_hex_uppercase_crc: str) -> str:
-        return f"{file_name} ({match_color}{declared_hex_uppercase_crc}{c_null})"
+        return "{file_name} ({match_color}{declared_hex_uppercase_crc}{c_null})".format(
+            c_null=c_null, **locals())
 
 
 def compute_crc(filename):
@@ -322,8 +327,7 @@ def add_crc32_tags(files):
                 file_name)
             if declared_crc:
                 store_name = store.name
-                logging.debug(
-                    f"{file_name} already has a CRC declared with '{store_name}' store.")
+                logging.debug("{file_name} already has a CRC declared with '{store_name}' store.".format(**locals()))
                 continue
 
             computed_crc = compute_crc(file_name)
