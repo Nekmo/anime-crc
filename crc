@@ -476,6 +476,7 @@ if __name__ == '__main__':
     if python_xattr_available:
         read_crc_storage.stores.append(XAttrCRCStorage())
 
+    exit_with_error = False
     try:
         if args.add_crc32_tags:
             # Add CRC32 to files
