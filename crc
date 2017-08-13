@@ -119,7 +119,7 @@ class CRCStorageInterface(object):
         raise NotImplementedError
 
 
-class ChainCRCStorage(CRCStorageInterface):
+class ChainCRCStorage:
     def __init__(self, stores: List[CRCStorageInterface]):
         self.stores = stores
 
