@@ -252,25 +252,18 @@ def compute_crc(filename):
         # Empty file, quit
         logging.error('The file %s is empty' % filename)
         return
-    try:
-        while True:
-            # While there is some data remaining...
-            data = file.read(buff_size)
-            done += buff_size
-            if progress_reporting:
-                # Show progress
-                sys.stderr.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
-            if not data:
-                # No more data, quit
-                break
-            crc = zlib.crc32(data, crc)
-    except KeyboardInterrupt:
-        # ^C was pressed in the terminal, reset the terminal and exit the
-        # program
+
+    while True:
+        # While there is some data remaining...
+        data = file.read(buff_size)
+        done += buff_size
         if progress_reporting:
-            sys.stderr.write(seq_backspace)
-        file.close()
-        sys.exit(1)
+            # Show progress
+            sys.stderr.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
+        if not data:
+            # No more data, quit
+            break
+        crc = zlib.crc32(data, crc)
 
     file.close()
 
@@ -477,24 +470,28 @@ if __name__ == '__main__':
     if python_xattr_available:
         read_crc_storage.stores.append(XAttrCRCStorage())
 
-    if args.add_crc32_tags:
-        # Add CRC32 to files
-        add_crc32_tags(recurse_file_list(args.add_crc32_tags))
+    try:
+        if args.add_crc32_tags:
+            # Add CRC32 to files
+            add_crc32_tags(recurse_file_list(args.add_crc32_tags))
 
-    if args.delete_crc32_tags:
-        # Remove CRC32 tags
-        delete_crc32_tags(recurse_file_list(args.delete_crc32_tags))
+        if args.delete_crc32_tags:
+            # Remove CRC32 tags
+            delete_crc32_tags(recurse_file_list(args.delete_crc32_tags))
 
-    if args.check:
-        # Check files integrity against existing CRC32 tags
-        mismatch_found = check_files(recurse_file_list(args.check))
+        if args.check:
+            # Check files integrity against existing CRC32 tags
+            exit_with_error = check_files(recurse_file_list(args.check))
+
+        if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
+            parser.print_help()
+            raise SystemExit(2)
+    except KeyboardInterrupt:
+        # ^C was pressed in the terminal
+        exit_with_error = True
 
     if progress_reporting:
         sys.stderr.write(clear_progress)
 
-    if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
-        parser.print_help()
-        raise SystemExit(2)
-
-    if mismatch_found:
+    if exit_with_error:
         raise SystemExit(1)
