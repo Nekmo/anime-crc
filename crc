@@ -1,43 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Version 0.2 2009.01.25
-# Copyright (c) 2009, Taoufik El Aoumari
-# Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
-
 """
-    ESTE PROGRAMA HA SIDO _REEDITADO POR
+CRC32 generator and checker. 
+2017-13-08 v0.5-dev
 
-             -- NEKMO.COM --
-        email: contacto@nekmo.com
+Based on crc script version 0.2 (2009.01.25) by:
+Copyright (c) 2009, Taoufik El Aoumari
 
-     La licencia de este programa es:
-              - GPL 3.0 -
-         Versión del programa:
-          # 01/05/2011 (0.4)
+Modified by nekmo and ntrrgc to add several features:
 
-    Feature añadida a programa original:
-      - Dar CRC32 a archivos
-      - Pythonización
-      - Corrección bug size == 0
-      - Uso de logs
-      - Uso de argumentos en consola
-      - CRC32 de archivos sin renombrarlos
-      - Establecer nivel del logging
-      - Compatible cpn Python 2.x y 3.x
-      - Recursividad
+- Add CRC32 codes to files
+- More Pythonic code
+- Fix size == 0 bug
+- Logging
+- Console arguments
+- Compute CRC32 on files missing it without renaming them
+- Customizable logging level
+- Ported to Python3
+- Recursive exploration
+- Locale-aware sorting in recursive exploration
+
+Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
 
-"""
-Modificaciones adicionales de ntrrgc:
-
-12/08/2017
-
-* Durante la exploración recursiva, los archivos se procesarán en orden 
-  alfabético, dependiente de locale.
-
-"""
-
-# Módulos requeridos
 import sys, re, zlib, os
 import logging
 import locale
@@ -73,28 +58,22 @@ def cmp_to_key(mycmp):
     return K
 
 
-try:
-    import argparse
-except ImportError:
-    logging.error('Necesita el módulo argparse.')
-    sys.exit(0)
+import argparse
 
-# Colores
+# Colors
 c_null = "\x1b[00;00m"
 c_red = "\x1b[31;01m"
 c_green = "\x1b[32;01m"
 p_reset = "\x08" * 8
 
-# modelo de nuevos archivos
+# Pattern for new file names
 base = '%s [%s]'
 
 
 def crc32_checksum(filename):
-    """Generador del CRC del archivo
-       filename: string
-                 Ruta al archivo"""
+    """Calculate the CRC32 checksum of a file.
+    Returns the CRC32 code as an hexadecimal string."""
 
-    # Variables para comprobación
     crc = 0
     file = open(filename, "rb")
     buff_size = 65536
@@ -102,52 +81,54 @@ def crc32_checksum(filename):
     done = 0
 
     if not size:
-        # El archivo no tiene tamaño, salir
-        logging.error('El archivo %s no tiene datos' % filename)
+        # Empty file, quit
+        logging.error('The file %s is empty' % filename)
         return
     try:
         while True:
-            # Mientras haya datos...
+            # While there is some data remaining...
             data = file.read(buff_size)
             done += buff_size
-            # informar de situación actual de conteo
+            # ... show our progress
             sys.stdout.write("%7d" % (done * 100 / size) + "%" + p_reset)
             if not data:
-                # Ya no hay más datos, salir
+                # No more data, quit
                 break
             crc = zlib.crc32(data, crc)
     except KeyboardInterrupt:
-        # Detectada excepción de interrupción por teclado
+        # ^C was pressed in the terminal, reset the terminal and exit the
+        # program
         sys.stdout.write(p_reset)
-        # Cerrar el archivo
         file.close()
         sys.exit(1)
-    sys.stdout.write("")
-    # !!!Cerrar el archivo
+    sys.stdout.write("")  # TODO: useless?
     file.close()
-    # Cálculo
+
+    # If running in Python2: ensure CRC is a positive number
+    # https://docs.python.org/3/library/zlib.html#zlib.crc32
     if crc < 0:
         crc &= 2 ** 32 - 1
-    return "%.8X" % (crc)
+
+    return "%.8X" % crc
 
 
 def check(files):
-    """Comprobador del CRC del archivo
-       files: tuple or list
-              listado de nombres de archivos"""
+    """Check CRC32 for the provided file name list."""
     for file in files:
         try:
-            # Encontrar CRC32 en el nombre de archivo
+            # Find CRC32 within the file name
             dest_sum = re.split("\[([a-fA-F0-9]{8})\]", file)
             if len(dest_sum) < 2:
-                logging.debug('%s no tenía CRC' % file)
+                logging.debug('%s does not have CRC in file name' % file)
                 continue
             dest_sum = dest_sum[-2]
-            # Generar CRC32
+
+            # Calculate CRC32
             crc = crc32_checksum(file)
             if not crc:
-                continue
-            # CRC32 del nombre de archivo == CRC32 generado
+                continue  # empty file
+
+            # Check the computed CRC32 matches the declared CRC32
             if crc == dest_sum.upper():
                 c_in = c_green
                 level = 'info'
@@ -169,28 +150,24 @@ def check(files):
 
 
 def addcrc32(files):
-    """Generador del CRC del archivo
-       files: tuple or list
-              listado de nombres de archivos"""
+    """Add a CRC32 code to files missing it."""
     for file in files:
         try:
-            # Generar CRC32
+            # Calculate CRC32
             crc = crc32_checksum(file)
             if not crc:
                 return
-            # Si hay un punto... (extensión)
             if '.' in file:
-                # hay un punto (por tanto extensión)
+                # The file name contains a dot (therefore, an extension)
                 file_split = file.split('.')
                 ext = '.' + file_split[-1]
                 new_file = base % ('.'.join(file_split[0:-1]), crc)
             else:
-                # no hay extensión
+                # No extension
                 ext = ''
                 new_file = base % (file, crc)
-            # Informar del cambio de nombre de archivo
+            # Log the name change
             logging.info('%s -> %s' % (file, new_file + ext))
-            # Renombrar archivo
             os.rename(file, new_file + ext)
         except(IndexError, ValueError):
             print(crc + "   " + file)
@@ -200,29 +177,28 @@ def addcrc32(files):
 
 
 if __name__ == '__main__':
-    # Description
     parser = argparse.ArgumentParser(description=
-                                     'Generador y comprobador de CRC32\'s')
+                                     'CRC32 generator and checker.')
     # addcrc32
     parser.add_argument('-a', '--addcrc32', dest='addcrc32', nargs='+',
-                        help='Generar CRC32\'s de archivos y cambiar los nombres con ellos.')
+                        help='Generate CRC32 for files and rename them.')
     # Recursive
     parser.add_argument('-r', dest='recursive', action='store_const',
                         const=True, default=False,
-                        help='Analizar directorios recursivamente.')
-    # level logs
+                        help='Explore directories recursively.')
+    # log level
     parser.add_argument('--debug', dest='level', action='store_const',
                         const=logging.DEBUG, default=logging.INFO,
-                        help='Establecer el nivel de los logs a debug.')
+                        help='Set log level to debugging messages.')
     parser.add_argument('--warning', dest='level', action='store_const',
                         const=logging.WARNING, default=logging.INFO,
-                        help='Establecer el nivel de los logs a solo advertencias.')
+                        help='Set log level to warnings (hides successful files).')
     parser.add_argument('--error', dest='level', action='store_const',
                         const=logging.ERROR, default=logging.INFO,
-                        help='Establecer el nivel a solo errores del programa.')
+                        help='Log only program errors.')  # TODO: useless?
     # check
     parser.add_argument('check', nargs='*',
-                        help='Comprobar el CRC32 de los archivos.')
+                        help='Check CRC32 of files.')
     args = parser.parse_args()
 
     # Recursive
@@ -236,14 +212,14 @@ if __name__ == '__main__':
                     f = os.path.join(root, file)
                     file_list.append(f)
         args.check.extend(file_list)
-    # Propiedades de los logs
+    # Set log level
     logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s')
 
     if args.addcrc32:
-        # Generar CRC32 de los archivos
+        # Add CRC32 to files
         addcrc32(args.addcrc32)
     elif not args.check:
-        print('No se han establecido argumentos.')
+        print('No arguments specified.')
     else:
-        # Comprobar los CRC32 de los archivos
+        # Check CRC32 of files
         check(args.check)
