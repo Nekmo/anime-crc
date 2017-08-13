@@ -73,7 +73,11 @@ def cmp_to_key(mycmp):
 c_null = "\x1b[00;00m" if stdout_is_tty else ""
 c_red = "\x1b[31;01m" if stdout_is_tty else ""
 c_green = "\x1b[32;01m" if stdout_is_tty else ""
+
+# Code to move 8 characters back in a tty
 seq_backspace = "\x08" * 8 if stdout_is_tty else ""
+
+# Code to delete 8 characters back in a tty (go back, fill with spaces, go back again)
 clear_progress = seq_backspace + " " * 8 + seq_backspace if stdout_is_tty else ""
 
 long_extensions = {".tar.gz", ".tar.bz", ".tar.xz"}
