@@ -22,6 +22,8 @@ Modified by nekmo and ntrrgc to add several features:
 - Add option to remove CRC tags
 - Add option to warn of missing tags
 - Exit with status code 1 if there is a mismatch (be nice with scripts)
+- Output is written to stdout!
+- Colors and progress reporting are disabled if not in a tty
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
@@ -32,9 +34,11 @@ import os
 import re
 import sys
 import zlib
+import argparse
 from typing import Union, Tuple, List
 
 locale.setlocale(locale.LC_ALL, "")
+stdout_is_tty = os.isatty(sys.stdout.fileno())
 
 
 def cmp_to_key(mycmp):
@@ -65,14 +69,12 @@ def cmp_to_key(mycmp):
     return K
 
 
-import argparse
-
 # Colors
-c_null = "\x1b[00;00m"
-c_red = "\x1b[31;01m"
-c_green = "\x1b[32;01m"
-seq_backspace = "\x08" * 8
-clear_progress = seq_backspace + " " * 8 + seq_backspace
+c_null = "\x1b[00;00m" if stdout_is_tty else ""
+c_red = "\x1b[31;01m" if stdout_is_tty else ""
+c_green = "\x1b[32;01m" if stdout_is_tty else ""
+seq_backspace = "\x08" * 8 if stdout_is_tty else ""
+clear_progress = seq_backspace + " " * 8 + seq_backspace if stdout_is_tty else ""
 
 long_extensions = {".tar.gz", ".tar.bz", ".tar.xz"}
 
@@ -249,8 +251,9 @@ def compute_crc(filename):
             # While there is some data remaining...
             data = file.read(buff_size)
             done += buff_size
-            # ... show our progress
-            sys.stdout.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
+            if stdout_is_tty:
+                # Show progress
+                sys.stdout.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
             if not data:
                 # No more data, quit
                 break
@@ -258,7 +261,8 @@ def compute_crc(filename):
     except KeyboardInterrupt:
         # ^C was pressed in the terminal, reset the terminal and exit the
         # program
-        sys.stdout.write(seq_backspace)
+        if stdout_is_tty:
+            sys.stdout.write(seq_backspace)
         file.close()
         sys.exit(1)
 
@@ -445,7 +449,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Set log level
-    logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s')
+    logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s',
+                        stream=sys.stdout)
 
     if not python_xattr_available and not args.no_warn_missing_xattr_ext:
         logging.warning(
@@ -472,7 +477,8 @@ if __name__ == '__main__':
         # Check files integrity against existing CRC32 tags
         mismatch_found = check_files(recurse_file_list(args.check))
 
-    sys.stdout.write(clear_progress)
+    if stdout_is_tty:
+        sys.stdout.write(clear_progress)
 
     if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
         parser.print_help()
