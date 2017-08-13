@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CRC32 generator and checker. 
-2017-13-08 v0.5-dev
+2017-13-08 v0.5
 
 Based on crc script version 0.2 (2009.01.25) by:
 Copyright (c) 2009, Taoufik El Aoumari
