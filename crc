@@ -20,6 +20,7 @@ Modified by nekmo and ntrrgc to add several features:
 - Locale-aware sorting in recursive exploration
 - Cleared progress output on exit
 - Add option to remove CRC tags
+- Add option to warn of missing tags
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
@@ -264,7 +265,8 @@ def check_files(files):
             # Find CRC32 within the file name
             declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
             if declared_crc is None:
-                logging.info('%s does not have a CRC tag' % file_name)
+                level = "warning" if warn_no_crc else "info"
+                getattr(logging, level)('%s does not have a CRC tag' % file_name)
                 continue
 
             # Calculate CRC32
@@ -394,6 +396,10 @@ if __name__ == '__main__':
                         const=True, default=False,
                         help="Don't warn of missing python3-xattr optional dependency.")
 
+    parser.add_argument('--warn-no-crc', action='store_const',
+                        const=True, default=False,
+                        help="Show a warning if no CRC tags are found in a file.")
+
     # Stores
     parser.add_argument('--read-from', type=parse_store_list,
                         default="filename,xattr" if python_xattr_available else "filename",
@@ -417,8 +423,9 @@ if __name__ == '__main__':
     if not python_xattr_available and not args.no_warn_missing_xattr_ext:
         logging.warning("python3-xattr is not installed, no 'xattr' store support.")
 
-    # Recursive
     recurse_files = args.recursive
+
+    warn_no_crc = args.warn_no_crc
 
     read_crc_storage = ChainCRCStorage(args.read_from)
     write_crc_storage = ChainCRCStorage(args.write_to)
