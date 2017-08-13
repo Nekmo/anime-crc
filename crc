@@ -25,9 +25,12 @@ Modified by nekmo and ntrrgc to add several features:
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
 
-import sys, re, zlib, os
-import logging
 import locale
+import logging
+import os
+import re
+import sys
+import zlib
 from typing import Union, Tuple, List
 
 locale.setlocale(locale.LC_ALL, "")
@@ -126,7 +129,8 @@ class ChainCRCStorage:
 
     # Should return this, but PyCharm is not smart enough to handle it:
     # Union[Tuple[str, CRCStorageInterface], Tuple[None, None]]:
-    def get_declared_crc_and_store(self, file_name: str) -> Tuple[Union[str, None], Union[CRCStorageInterface, None]]:
+    def get_declared_crc_and_store(self, file_name: str) -> Tuple[
+        Union[str, None], Union[CRCStorageInterface, None]]:
         for store in self.stores:
             crc = store.get_declared_crc(file_name)
             if crc:
@@ -152,7 +156,8 @@ class FileNameCRCStorage(CRCStorageInterface):
                       declared_hex_uppercase_crc: str) -> str:
         before_crc, crc_portion, after_crc = re.match(
             r"^(.*\[)([a-fA-F0-9]{8})(\].*)$", file_name).groups()
-        return "{before_crc}{match_color}{crc_portion}{c_null}{after_crc}".format(c_null=c_null, **locals())
+        return "{before_crc}{match_color}{crc_portion}{c_null}{after_crc}".format(
+            c_null=c_null, **locals())
 
     def get_declared_crc(self, file_name: str) -> Union[str, None]:
         match = re.match(r".*\[([a-fA-F0-9]{8})\].*", file_name)
@@ -163,7 +168,8 @@ class FileNameCRCStorage(CRCStorageInterface):
         directory = os.path.dirname(file_name)
         base_name = os.path.basename(file_name)
 
-        name_part, extension = split_file_extension(self._name_without_crc(base_name))
+        name_part, extension = split_file_extension(
+            self._name_without_crc(base_name))
 
         name_part_with_path = os.path.join(directory, name_part)
         name_pattern = '{name_part_with_path} [{hex_uppercase_crc}]{extension}'
@@ -188,8 +194,10 @@ class FileNameCRCStorage(CRCStorageInterface):
         else:
             return False
 
+
 try:
     import xattr
+
     python_xattr_available = True
 except ImportError:
     python_xattr_available = False
@@ -263,10 +271,12 @@ def check_files(files):
     for file_name in files:
         try:
             # Find CRC32 within the file name
-            declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
+            declared_crc, store = read_crc_storage.get_declared_crc_and_store(
+                file_name)
             if declared_crc is None:
                 level = "warning" if warn_no_crc else "info"
-                getattr(logging, level)('%s does not have a CRC tag' % file_name)
+                getattr(logging, level)(
+                    '%s does not have a CRC tag' % file_name)
                 continue
 
             # Calculate CRC32
@@ -282,9 +292,11 @@ def check_files(files):
                 match_color = c_red
                 level = 'warning'
 
-            formatted_name = store.get_file_repr(file_name, match_color, declared_crc)
+            formatted_name = store.get_file_repr(file_name, match_color,
+                                                 declared_crc)
             getattr(logging, level)("{match_color}{computed_crc}{c_null}  "
-                                    "{formatted_name}".format(c_null=c_null, **locals()))
+                                    "{formatted_name}".format(c_null=c_null,
+                                                              **locals()))
         except IOError as e:
             logging.error(e)
             continue
@@ -295,10 +307,12 @@ def add_crc32_tags(files):
     for file_name in files:
         try:
             # Try to read existing CRC32
-            declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
+            declared_crc, store = read_crc_storage.get_declared_crc_and_store(
+                file_name)
             if declared_crc:
                 store_name = store.name
-                logging.debug(f"{file_name} already has a CRC declared with '{store_name}' store.")
+                logging.debug(
+                    f"{file_name} already has a CRC declared with '{store_name}' store.")
                 continue
 
             computed_crc = compute_crc(file_name)
@@ -323,6 +337,7 @@ def delete_crc32_tags(files):
         except IOError as e:
             print(e)
             continue
+
 
 def separate_directories(file_list):
     directories = []
@@ -369,6 +384,7 @@ def parse_store_list(string_list: str) -> List[CRCStorageInterface]:
 
         ret.append(stores[store_name]())
     return ret
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRC32 generator and checker.',
@@ -421,7 +437,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s')
 
     if not python_xattr_available and not args.no_warn_missing_xattr_ext:
-        logging.warning("python3-xattr is not installed, no 'xattr' store support.")
+        logging.warning(
+            "python3-xattr is not installed, no 'xattr' store support.")
 
     recurse_files = args.recursive
 
