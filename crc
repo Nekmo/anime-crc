@@ -159,9 +159,13 @@ class FileNameCRCStorage(CRCStorageInterface):
             return match.groups()[0].upper()
 
     def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
-        base_name, extension = split_file_extension(self._name_without_crc(file_name))
+        directory = os.path.dirname(file_name)
+        base_name = os.path.basename(file_name)
 
-        name_pattern = '{base_name} [{hex_uppercase_crc}]{extension}'
+        name_part, extension = split_file_extension(self._name_without_crc(base_name))
+
+        name_part_with_path = os.path.join(directory, name_part)
+        name_pattern = '{name_part_with_path} [{hex_uppercase_crc}]{extension}'
         new_file_name = name_pattern.format(**locals())
 
         self._do_rename(file_name, new_file_name)
