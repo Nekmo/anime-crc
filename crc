@@ -3,9 +3,11 @@
 CRC32 generator and checker. 
 2017-13-08 v0.6
 
-Based on crc script version 0.2 (2009.01.25) by:
-Copyright (c) 2009, Taoufik El Aoumari
+Copyright (c) 2009 Taoufik El Aoumari (forked from version 0.2, 2009-01-25)
+Copyright (c) 2011 Nekmo
+Copyright (c) 2017 Alicia Boya García (ntrrgc)
 
+Original script: http://agafix.org/anime-crc32-checksum-in-linux-v20/
 Modified by nekmo and ntrrgc to add several features:
 
 - Add CRC32 codes to files
