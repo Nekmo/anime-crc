@@ -422,7 +422,6 @@ if __name__ == '__main__':
 
     read_crc_storage = ChainCRCStorage(args.read_from)
     write_crc_storage = ChainCRCStorage(args.write_to)
-    print(args)
     if python_xattr_available:
         read_crc_storage.stores.append(XAttrCRCStorage())
 
