@@ -193,9 +193,7 @@ if __name__ == '__main__':
     parser.add_argument('--warning', dest='level', action='store_const',
                         const=logging.WARNING, default=logging.INFO,
                         help='Set log level to warnings (hides successful files).')
-    parser.add_argument('--error', dest='level', action='store_const',
-                        const=logging.ERROR, default=logging.INFO,
-                        help='Log only program errors.')  # TODO: useless?
+
     # check
     parser.add_argument('check', nargs='*',
                         help='Check CRC32 of files.')
