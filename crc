@@ -24,6 +24,7 @@ Modified by nekmo and ntrrgc to add several features:
 - Exit with status code 1 if there is a mismatch (be nice with scripts)
 - Output is written to stdout!
 - Colors and progress reporting are disabled if not in a tty
+- xattr store
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
