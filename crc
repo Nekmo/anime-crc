@@ -38,6 +38,8 @@ import zlib
 import argparse
 from typing import Union, Tuple, List
 
+import fcntl
+
 locale.setlocale(locale.LC_ALL, "")
 stdout_is_tty = os.isatty(sys.stdout.fileno())
 
@@ -401,6 +403,25 @@ def parse_store_list(string_list: str) -> List[CRCStorageInterface]:
     return ret
 
 
+class LockingStream:
+    def __init__(self, wrapped):
+        super().__setattr__("_wrapped", wrapped)
+
+    def write(self, buf: bytes):
+        fcntl.flock(self._wrapped.fileno(), fcntl.LOCK_EX)
+        try:
+            self._wrapped.write(buf)
+        finally:
+            fcntl.flock(self._wrapped.fileno(), fcntl.LOCK_UN)
+
+    def __getattr__(self, item):
+        return getattr(self._wrapped, item)
+
+    def __setattr__(self, key, value):
+        return setattr(self._wrapped, key, value)
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRC32 generator and checker.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -455,7 +476,7 @@ if __name__ == '__main__':
 
     # Set log level
     logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s',
-                        stream=sys.stdout)
+                        stream=LockingStream(sys.stdout))
 
     if not python_xattr_available and not args.no_warn_missing_xattr_ext:
         logging.warning(
