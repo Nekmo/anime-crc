@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CRC32 generator and checker. 
-2017-13-08 v0.5
+2017-13-08 v0.6
 
 Based on crc script version 0.2 (2009.01.25) by:
 Copyright (c) 2009, Taoufik El Aoumari
@@ -21,6 +21,7 @@ Modified by nekmo and ntrrgc to add several features:
 - Cleared progress output on exit
 - Add option to remove CRC tags
 - Add option to warn of missing tags
+- Exit with status code 1 if there is a mismatch (be nice with scripts)
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
@@ -266,8 +267,10 @@ def compute_crc(filename):
     return "%.8X" % crc
 
 
-def check_files(files):
+def check_files(files) -> bool:
     """Check CRC32 for the provided file name list."""
+    mismatch_found = False
+
     for file_name in files:
         try:
             # Find CRC32 within the file name
@@ -291,6 +294,7 @@ def check_files(files):
             else:
                 match_color = c_red
                 level = 'warning'
+                mismatch_found = True
 
             formatted_name = store.get_file_repr(file_name, match_color,
                                                  declared_crc)
@@ -300,6 +304,8 @@ def check_files(files):
         except IOError as e:
             logging.error(e)
             continue
+
+    return mismatch_found
 
 
 def add_crc32_tags(files):
@@ -464,10 +470,13 @@ if __name__ == '__main__':
 
     if args.check:
         # Check files integrity against existing CRC32 tags
-        check_files(recurse_file_list(args.check))
+        mismatch_found = check_files(recurse_file_list(args.check))
 
     sys.stdout.write(clear_progress)
 
     if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
         parser.print_help()
         raise SystemExit(2)
+
+    if mismatch_found:
+        raise SystemExit(1)
