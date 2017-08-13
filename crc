@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 CRC32 generator and checker. 
 2017-13-08 v0.5-dev
@@ -19,6 +18,8 @@ Modified by nekmo and ntrrgc to add several features:
 - Ported to Python3
 - Recursive exploration
 - Locale-aware sorting in recursive exploration
+- Cleared progress output on exit
+- Add option to remove CRC tags
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
@@ -26,6 +27,7 @@ Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 import sys, re, zlib, os
 import logging
 import locale
+from typing import Union, Tuple, List
 
 locale.setlocale(locale.LC_ALL, "")
 
@@ -64,13 +66,125 @@ import argparse
 c_null = "\x1b[00;00m"
 c_red = "\x1b[31;01m"
 c_green = "\x1b[32;01m"
-p_reset = "\x08" * 8
+seq_backspace = "\x08" * 8
+clear_progress = seq_backspace + " " * 8 + seq_backspace
 
-# Pattern for new file names
-base = '%s [%s]'
+long_extensions = {".tar.gz", ".tar.bz", ".tar.xz"}
 
 
-def crc32_checksum(filename):
+def split_file_extension(file_name: str) -> Tuple[str, str]:
+    """
+    Split the given file name as (base_name, extension).
+    The extension either starts by dot or is empty string.
+    """
+    long_extension = next((
+        ext
+        for ext in long_extensions
+        if file_name.endswith(ext)), None)
+    if long_extension:
+        base_name = file_name.rsplit(long_extension, 1)[0]
+        return base_name, long_extension
+
+    split_name = file_name.rsplit(".", 1)
+    if len(split_name) == 1:
+        # Handle dot-less files like "Makefile"
+        return split_name[0], ""
+    elif len(split_name) == 2 and split_name[0] == "":
+        # Handle hidden files that start with dot, like ".directory".
+        # We don't consider ".directory" an extension, but rather the base name.
+        return split_name[1], ""
+    else:
+        # Handle normal extensions, like in "hello.txt"
+        return split_name[0], "." + split_name[1]
+
+
+class CRCStorageInterface(object):
+    @property
+    def name(self):
+        raise NotImplementedError
+
+    def get_declared_crc(self, file_name: str) -> Union[str, None]:
+        """@:return String or None, if not found."""
+        raise NotImplementedError
+
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+        raise NotImplementedError
+
+    def unset_declared_crc(self, file_name: str) -> bool:
+        raise NotImplementedError
+
+    def get_file_repr(self, file_name: str, match_color: str,
+                      declared_hex_uppercase_crc: str) -> str:
+        """Representation of the file name printed to the log."""
+        raise NotImplementedError
+
+
+class ChainCRCStorage(CRCStorageInterface):
+    def __init__(self, stores: List[CRCStorageInterface]):
+        self.stores = stores
+
+    # Should return this, but PyCharm is not smart enough to handle it:
+    # Union[Tuple[str, CRCStorageInterface], Tuple[None, None]]:
+    def get_declared_crc_and_store(self, file_name: str) -> Tuple[Union[str, None], Union[CRCStorageInterface, None]]:
+        for store in self.stores:
+            crc = store.get_declared_crc(file_name)
+            if crc:
+                return crc, store
+        return None, None
+
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+        for store in self.stores:
+            store.set_declared_crc(file_name, hex_uppercase_crc)
+
+    def unset_declared_crc(self, file_name: str) -> bool:
+        removed_anything = False
+        for store in self.stores:
+            removed_this = store.unset_declared_crc(file_name)
+            removed_anything = removed_anything or removed_this
+        return removed_anything
+
+
+class FileNameCRCStorage(CRCStorageInterface):
+    name = 'filename'
+
+    def get_file_repr(self, file_name: str, match_color: str,
+                      declared_hex_uppercase_crc: str) -> str:
+        before_crc, crc_portion, after_crc = re.match(
+            r"^(.*\[)([a-fA-F0-9]{8})(\].*)$", file_name).groups()
+        return "{before_crc}{match_color}{crc_portion}{c_null}{after_crc}".format(c_null=c_null, **locals())
+
+    def get_declared_crc(self, file_name: str) -> Union[str, None]:
+        match = re.match(r".*\[([a-fA-F0-9]{8})\].*", file_name)
+        if match:
+            return match.groups()[0].upper()
+
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+        base_name, extension = split_file_extension(self._name_without_crc(file_name))
+
+        name_pattern = '{base_name} [{hex_uppercase_crc}]{extension}'
+        new_file_name = name_pattern.format(**locals())
+
+        self._do_rename(file_name, new_file_name)
+
+    @staticmethod
+    def _name_without_crc(file_name: str) -> str:
+        return re.sub(r" ?\[([a-fA-F0-9]{8})\]", "", file_name)
+
+    @staticmethod
+    def _do_rename(file_name: str, new_file_name: str) -> None:
+        logging.info('%s -> %s' % (file_name, new_file_name))
+        os.rename(file_name, new_file_name)
+
+    def unset_declared_crc(self, file_name: str) -> bool:
+        new_file_name = self._name_without_crc(file_name)
+        if file_name != new_file_name:
+            self._do_rename(file_name, new_file_name)
+            return True
+        else:
+            return False
+
+
+def compute_crc(filename):
     """Calculate the CRC32 checksum of a file.
     Returns the CRC32 code as an hexadecimal string."""
 
@@ -90,7 +204,7 @@ def crc32_checksum(filename):
             data = file.read(buff_size)
             done += buff_size
             # ... show our progress
-            sys.stdout.write("%7d" % (done * 100 / size) + "%" + p_reset)
+            sys.stdout.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
             if not data:
                 # No more data, quit
                 break
@@ -98,90 +212,125 @@ def crc32_checksum(filename):
     except KeyboardInterrupt:
         # ^C was pressed in the terminal, reset the terminal and exit the
         # program
-        sys.stdout.write(p_reset)
+        sys.stdout.write(seq_backspace)
         file.close()
         sys.exit(1)
 
     file.close()
 
-    # If running in Python2: ensure CRC is a positive number
-    # https://docs.python.org/3/library/zlib.html#zlib.crc32
-    if crc < 0:
-        crc &= 2 ** 32 - 1
-
     return "%.8X" % crc
 
 
-def check(files):
+def check_files(files):
     """Check CRC32 for the provided file name list."""
-    for file in files:
+    for file_name in files:
         try:
             # Find CRC32 within the file name
-            dest_sum = re.split("\[([a-fA-F0-9]{8})\]", file)
-            if len(dest_sum) < 2:
-                logging.debug('%s does not have CRC in file name' % file)
+            declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
+            if declared_crc is None:
+                logging.info('%s does not have CRC in file name' % file_name)
                 continue
-            dest_sum = dest_sum[-2]
 
             # Calculate CRC32
-            crc = crc32_checksum(file)
-            if not crc:
+            computed_crc = compute_crc(file_name)
+            if not computed_crc:
                 continue  # empty file
 
             # Check the computed CRC32 matches the declared CRC32
-            if crc == dest_sum.upper():
-                c_in = c_green
+            if computed_crc == declared_crc:
+                match_color = c_green
                 level = 'info'
             else:
-                c_in = c_red
+                match_color = c_red
                 level = 'warning'
-            sfile = file.split(dest_sum)
-            getattr(logging, level)("%(c_in)s%(crc)s%(c_null)s  " \
-                                    "%(sfile0)s%(c_in)s%(dest_sum)s%(c_null)s%(sfile1)s" % \
-                                    {'c_in': c_in, 'c_null': c_null,
-                                     'sfile0': sfile[0],
-                                     'sfile1': sfile[1], 'dest_sum': dest_sum,
-                                     'crc': crc})
-        except(IndexError, ValueError):
-            logging.error(crc + "   " + file)
+
+            formatted_name = store.get_file_repr(file_name, match_color, declared_crc)
+            getattr(logging, level)("{match_color}{computed_crc}{c_null}  "
+                                    "{formatted_name}".format(c_null=c_null, **locals()))
         except IOError as e:
             logging.error(e)
             continue
 
 
-def addcrc32(files):
+def add_crc32_tags(files):
     """Add a CRC32 code to files missing it."""
-    for file in files:
+    for file_name in files:
         try:
-            # Calculate CRC32
-            crc = crc32_checksum(file)
-            if not crc:
-                return
-            if '.' in file:
-                # The file name contains a dot (therefore, an extension)
-                file_split = file.split('.')
-                ext = '.' + file_split[-1]
-                new_file = base % ('.'.join(file_split[0:-1]), crc)
-            else:
-                # No extension
-                ext = ''
-                new_file = base % (file, crc)
-            # Log the name change
-            logging.info('%s -> %s' % (file, new_file + ext))
-            os.rename(file, new_file + ext)
-        except(IndexError, ValueError):
-            print(crc + "   " + file)
+            # Try to read existing CRC32
+            declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
+            if declared_crc:
+                store_name = store.name
+                logging.debug(f"{file_name} already has a CRC declared with '{store_name}' store.")
+                continue
+
+            computed_crc = compute_crc(file_name)
+            if not computed_crc:
+                continue
+
+            write_crc_storage.set_declared_crc(file_name, computed_crc)
+
         except IOError as e:
             print(e)
             continue
 
 
+def delete_crc32_tags(files):
+    """Remove CRC32 codes to the specified files (danger!)"""
+    for file_name in files:
+        try:
+            removed_anything = write_crc_storage.unset_declared_crc(file_name)
+            if not removed_anything:
+                logging.info("%s has no CRC tags to remove." % file_name)
+
+        except IOError as e:
+            print(e)
+            continue
+
+def separate_directories(file_list):
+    directories = []
+    files = []
+
+    for file_name in file_list:
+        if os.path.isdir(file_name):
+            directories.append(file_name)
+        else:
+            files.append(file_name)
+
+    return files, directories
+
+
+def recurse_file_list(original_list):
+    original_files, original_dirs = separate_directories(original_list)
+
+    if not recurse_files:
+        return original_files  # filter out directories
+
+    found_files = []
+    for rootdir in original_dirs:
+        for root, subFolders, files in os.walk(rootdir):
+            files.sort(key=cmp_to_key(locale.strcoll))
+            subFolders.sort(key=cmp_to_key(locale.strcoll))
+            for file in files:
+                f = os.path.join(root, file)
+                found_files.append(f)
+
+    return original_files + found_files
+
+# Default options
+recurse_files = False
+read_crc_storage = ChainCRCStorage([FileNameCRCStorage()])
+write_crc_storage = ChainCRCStorage([FileNameCRCStorage()])
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=
                                      'CRC32 generator and checker.')
     # addcrc32
-    parser.add_argument('-a', '--addcrc32', dest='addcrc32', nargs='+',
+    parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='+',
                         help='Generate CRC32 for files and rename them.')
+
+    parser.add_argument('--delete', dest='delete_crc32_tags', nargs='+',
+                        help='Delete CRC32 tags in the specified files.')
+
     # Recursive
     parser.add_argument('-r', dest='recursive', action='store_const',
                         const=True, default=False,
@@ -201,23 +350,26 @@ if __name__ == '__main__':
 
     # Recursive
     if args.recursive:
-        file_list = []
-        for rootdir in args.check:
-            for root, subFolders, files in os.walk(rootdir):
-                files.sort(key=cmp_to_key(locale.strcoll))
-                subFolders.sort(key=cmp_to_key(locale.strcoll))
-                for file in files:
-                    f = os.path.join(root, file)
-                    file_list.append(f)
-        args.check.extend(file_list)
+        recurse_files = True
+
     # Set log level
     logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s')
 
-    if args.addcrc32:
+    if args.add_crc32_tags:
         # Add CRC32 to files
-        addcrc32(args.addcrc32)
-    elif not args.check:
-        print('No arguments specified.')
-    else:
-        # Check CRC32 of files
-        check(args.check)
+        add_crc32_tags(recurse_file_list(args.add_crc32_tags))
+
+    if args.delete_crc32_tags:
+        # Remove CRC32 tags
+        delete_crc32_tags(recurse_file_list(args.delete_crc32_tags))
+
+    if args.check:
+        # Check files integrity against existing CRC32 tags
+        check_files(recurse_file_list(args.check))
+
+    sys.stdout.write(clear_progress)
+
+    if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
+        parser.print_help()
+        raise SystemExit(1)
+
