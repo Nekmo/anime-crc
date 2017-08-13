@@ -187,6 +187,38 @@ class FileNameCRCStorage(CRCStorageInterface):
         else:
             return False
 
+try:
+    import xattr
+    python_xattr_available = True
+except ImportError:
+    python_xattr_available = False
+
+
+class XAttrCRCStorage(CRCStorageInterface):
+    name = "xattr"
+
+    def get_declared_crc(self, file_name: str) -> Union[str, None]:
+        try:
+            return xattr.getxattr(file_name, b"user.nekcrc").decode()
+        except OSError:
+            return None
+
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+        logging.info('%s (%s)' % (file_name, hex_uppercase_crc))
+        xattr.setxattr(file_name, b"user.nekcrc", hex_uppercase_crc.encode())
+
+    def unset_declared_crc(self, file_name: str) -> bool:
+        try:
+            xattr.removexattr(file_name, b"user.nekcrc")
+            logging.info('%s (removed CRC xattr)' % file_name)
+            return True
+        except OSError:
+            return False
+
+    def get_file_repr(self, file_name: str, match_color: str,
+                      declared_hex_uppercase_crc: str) -> str:
+        return f"{file_name} ({match_color}{declared_hex_uppercase_crc}{c_null})"
+
 
 def compute_crc(filename):
     """Calculate the CRC32 checksum of a file.
@@ -232,7 +264,7 @@ def check_files(files):
             # Find CRC32 within the file name
             declared_crc, store = read_crc_storage.get_declared_crc_and_store(file_name)
             if declared_crc is None:
-                logging.info('%s does not have CRC in file name' % file_name)
+                logging.info('%s does not have a CRC tag' % file_name)
                 continue
 
             # Calculate CRC32
@@ -320,14 +352,25 @@ def recurse_file_list(original_list):
 
     return original_files + found_files
 
-# Default options
-recurse_files = False
-read_crc_storage = ChainCRCStorage([FileNameCRCStorage()])
-write_crc_storage = ChainCRCStorage([FileNameCRCStorage()])
+
+def parse_store_list(string_list: str) -> List[CRCStorageInterface]:
+    stores = {
+        "filename": FileNameCRCStorage,
+        "xattr": XAttrCRCStorage,
+    }
+
+    ret = []
+    for store_name in string_list.split(","):
+        if store_name == "xattr" and not python_xattr_available:
+            logging.info("Cannot use xattr store without python3-xattr.")
+            raise SystemExit(2)
+
+        ret.append(stores[store_name]())
+    return ret
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=
-                                     'CRC32 generator and checker.')
+    parser = argparse.ArgumentParser(description='CRC32 generator and checker.',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # addcrc32
     parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='+',
                         help='Generate CRC32 for files and rename them.')
@@ -347,17 +390,41 @@ if __name__ == '__main__':
                         const=logging.WARNING, default=logging.INFO,
                         help='Set log level to warnings (hides successful files).')
 
+    parser.add_argument('--no-warn-missing-xattr-ext', action='store_const',
+                        const=True, default=False,
+                        help="Don't warn of missing python3-xattr optional dependency.")
+
+    # Stores
+    parser.add_argument('--read-from', type=parse_store_list,
+                        default="filename,xattr" if python_xattr_available else "filename",
+                        help="A comma-separated list of tag stores used for checking integrity. "
+                             "First successful read is used.")
+
+    parser.add_argument('--write-to', type=parse_store_list,
+                        default="filename",
+                        help="A comma-separated list of tag stores used for writing CRC tags. "
+                             "Tags are written in every tag store specified.")
+
     # check
     parser.add_argument('check', nargs='*',
                         help='Check CRC32 of files.')
-    args = parser.parse_args()
 
-    # Recursive
-    if args.recursive:
-        recurse_files = True
+    args = parser.parse_args()
 
     # Set log level
     logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s')
+
+    if not python_xattr_available and not args.no_warn_missing_xattr_ext:
+        logging.warning("python3-xattr is not installed, no 'xattr' store support.")
+
+    # Recursive
+    recurse_files = args.recursive
+
+    read_crc_storage = ChainCRCStorage(args.read_from)
+    write_crc_storage = ChainCRCStorage(args.write_to)
+    print(args)
+    if python_xattr_available:
+        read_crc_storage.stores.append(XAttrCRCStorage())
 
     if args.add_crc32_tags:
         # Add CRC32 to files
@@ -375,5 +442,4 @@ if __name__ == '__main__':
 
     if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
         parser.print_help()
-        raise SystemExit(1)
-
+        raise SystemExit(2)
