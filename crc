@@ -22,7 +22,7 @@ Modified by nekmo and ntrrgc to add several features:
 - Add option to remove CRC tags
 - Add option to warn of missing tags
 - Exit with status code 1 if there is a mismatch (be nice with scripts)
-- Output is written to stdout!
+- File entries are written to stdout, progress to stderr
 - Colors and progress reporting are disabled if not in a tty
 - xattr store
 
@@ -40,6 +40,7 @@ from typing import Union, Tuple, List
 
 locale.setlocale(locale.LC_ALL, "")
 stdout_is_tty = os.isatty(sys.stdout.fileno())
+stderr_is_tty = os.isatty(sys.stderr.fileno())
 
 
 def cmp_to_key(mycmp):
@@ -256,9 +257,9 @@ def compute_crc(filename):
             # While there is some data remaining...
             data = file.read(buff_size)
             done += buff_size
-            if stdout_is_tty:
+            if progress_reporting:
                 # Show progress
-                sys.stdout.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
+                sys.stderr.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
             if not data:
                 # No more data, quit
                 break
@@ -266,8 +267,8 @@ def compute_crc(filename):
     except KeyboardInterrupt:
         # ^C was pressed in the terminal, reset the terminal and exit the
         # program
-        if stdout_is_tty:
-            sys.stdout.write(seq_backspace)
+        if progress_reporting:
+            sys.stderr.write(seq_backspace)
         file.close()
         sys.exit(1)
 
@@ -434,6 +435,10 @@ if __name__ == '__main__':
                         const=True, default=False,
                         help="Show a warning if no CRC tags are found in a file.")
 
+    parser.add_argument('-n', '--no-progress', action='store_const',
+                        const=True, default=False,
+                        help="Disable progress reporting, even if connected to a tty.")
+
     # Stores
     parser.add_argument('--read-from', type=parse_store_list,
                         metavar='<stores>',
@@ -465,6 +470,8 @@ if __name__ == '__main__':
 
     warn_no_crc = args.warn_no_crc
 
+    progress_reporting = stdout_is_tty and stderr_is_tty and not args.no_progress
+
     read_crc_storage = ChainCRCStorage(args.read_from)
     write_crc_storage = ChainCRCStorage(args.write_to)
     if python_xattr_available:
@@ -482,8 +489,8 @@ if __name__ == '__main__':
         # Check files integrity against existing CRC32 tags
         mismatch_found = check_files(recurse_file_list(args.check))
 
-    if stdout_is_tty:
-        sys.stdout.write(clear_progress)
+    if progress_reporting:
+        sys.stderr.write(clear_progress)
 
     if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
         parser.print_help()
