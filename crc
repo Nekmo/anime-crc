@@ -391,13 +391,16 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # addcrc32
     parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='+',
+                        metavar='<file>',
                         help='Generate CRC32 for files and rename them.')
 
     parser.add_argument('--delete', dest='delete_crc32_tags', nargs='+',
+                        metavar='<file>',
                         help='Delete CRC32 tags in the specified files.')
 
     # Recursive
-    parser.add_argument('-r', dest='recursive', action='store_const',
+    parser.add_argument('-r', '--recursive', dest='recursive',
+                        action='store_const',
                         const=True, default=False,
                         help='Explore directories recursively.')
     # log level
@@ -418,17 +421,19 @@ if __name__ == '__main__':
 
     # Stores
     parser.add_argument('--read-from', type=parse_store_list,
+                        metavar='<stores>',
                         default="filename,xattr" if python_xattr_available else "filename",
                         help="A comma-separated list of tag stores used for checking integrity. "
                              "First successful read is used.")
 
     parser.add_argument('--write-to', type=parse_store_list,
+                        metavar='<stores>',
                         default="filename",
                         help="A comma-separated list of tag stores used for writing CRC tags. "
                              "Tags are written in every tag store specified.")
 
     # check
-    parser.add_argument('check', nargs='*',
+    parser.add_argument('check', nargs='*', metavar='<file>',
                         help='Check CRC32 of files.')
 
     args = parser.parse_args()
