@@ -101,7 +101,7 @@ def crc32_checksum(filename):
         sys.stdout.write(p_reset)
         file.close()
         sys.exit(1)
-    sys.stdout.write("")  # TODO: useless?
+
     file.close()
 
     # If running in Python2: ensure CRC is a positive number
