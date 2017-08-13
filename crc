@@ -327,7 +327,7 @@ def add_crc32_tags(files):
                 file_name)
             if declared_crc:
                 store_name = store.name
-                logging.debug("{file_name} already has a CRC declared with '{store_name}' store.".format(**locals()))
+                logging.debug("{file_name} already has a CRC declared with the '{store_name}' store.".format(**locals()))
                 continue
 
             computed_crc = compute_crc(file_name)
