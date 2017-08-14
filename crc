@@ -119,17 +119,20 @@ def split_file_extension(file_name: str) -> Tuple[str, str]:
 
 class CRCStorageInterface(object):
     @property
-    def name(self):
+    def name(self) -> str:
         raise NotImplementedError
 
     def get_declared_crc(self, file_name: str) -> Union[str, None]:
-        """@:return String or None, if not found."""
+        """:return string or None, if not found."""
         raise NotImplementedError
 
-    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> str:
+        """:return new file name after setting the tag."""
         raise NotImplementedError
 
-    def unset_declared_crc(self, file_name: str) -> bool:
+    def unset_declared_crc(self, file_name: str) -> Tuple[bool, str]:
+        """:return whether a tag has been removed, file name after removing 
+        the tag """
         raise NotImplementedError
 
     def get_file_repr(self, file_name: str, match_color: str,
@@ -139,7 +142,7 @@ class CRCStorageInterface(object):
 
 
 class ChainCRCStorage:
-    def __init__(self, stores: List[CRCStorageInterface]):
+    def __init__(self, stores: List[CRCStorageInterface]) -> None:
         self.stores = stores
 
     # Should return this, but PyCharm is not smart enough to handle it:
@@ -152,16 +155,17 @@ class ChainCRCStorage:
                 return crc, store
         return None, None
 
-    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> str:
         for store in self.stores:
-            store.set_declared_crc(file_name, hex_uppercase_crc)
+            file_name = store.set_declared_crc(file_name, hex_uppercase_crc)
+        return file_name
 
-    def unset_declared_crc(self, file_name: str) -> bool:
+    def unset_declared_crc(self, file_name: str) -> Tuple[bool, str]:
         removed_anything = False
         for store in self.stores:
-            removed_this = store.unset_declared_crc(file_name)
+            removed_this, file_name = store.unset_declared_crc(file_name)
             removed_anything = removed_anything or removed_this
-        return removed_anything
+        return removed_anything, file_name
 
 
 class FileNameCRCStorage(CRCStorageInterface):
@@ -178,8 +182,10 @@ class FileNameCRCStorage(CRCStorageInterface):
         match = re.match(r".*\[([a-fA-F0-9]{8})\].*", file_name)
         if match:
             return match.groups()[0].upper()
+        else:
+            return None
 
-    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> str:
         directory = os.path.dirname(file_name)
         base_name = os.path.basename(file_name)
 
@@ -191,6 +197,7 @@ class FileNameCRCStorage(CRCStorageInterface):
         new_file_name = name_pattern.format(**locals())
 
         self._do_rename(file_name, new_file_name)
+        return new_file_name
 
     @staticmethod
     def _name_without_crc(file_name: str) -> str:
@@ -201,13 +208,13 @@ class FileNameCRCStorage(CRCStorageInterface):
         logging.info('%s -> %s' % (file_name, new_file_name))
         os.rename(file_name, new_file_name)
 
-    def unset_declared_crc(self, file_name: str) -> bool:
+    def unset_declared_crc(self, file_name: str) -> Tuple[bool, str]:
         new_file_name = self._name_without_crc(file_name)
         if file_name != new_file_name:
             self._do_rename(file_name, new_file_name)
-            return True
+            return True, new_file_name
         else:
-            return False
+            return False, file_name
 
 
 try:
@@ -227,17 +234,18 @@ class XAttrCRCStorage(CRCStorageInterface):
         except OSError:
             return None
 
-    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> None:
+    def set_declared_crc(self, file_name: str, hex_uppercase_crc: str) -> str:
         logging.info('%s (%s)' % (file_name, hex_uppercase_crc))
         xattr.setxattr(file_name, b"user.nekcrc", hex_uppercase_crc.encode())
+        return file_name
 
-    def unset_declared_crc(self, file_name: str) -> bool:
+    def unset_declared_crc(self, file_name: str) -> Tuple[bool, str]:
         try:
             xattr.removexattr(file_name, b"user.nekcrc")
             logging.info('%s (removed CRC xattr)' % file_name)
-            return True
+            return True, file_name
         except OSError:
-            return False
+            return False, file_name
 
     def get_file_repr(self, file_name: str, match_color: str,
                       declared_hex_uppercase_crc: str) -> str:
@@ -334,7 +342,7 @@ def add_crc32_tags(files):
             if not computed_crc:
                 continue
 
-            write_crc_storage.set_declared_crc(file_name, computed_crc)
+            file_name = write_crc_storage.set_declared_crc(file_name, computed_crc)
 
         except IOError as e:
             print(e)
@@ -345,7 +353,7 @@ def delete_crc32_tags(files):
     """Remove CRC32 codes to the specified files (danger!)"""
     for file_name in files:
         try:
-            removed_anything = write_crc_storage.unset_declared_crc(file_name)
+            removed_anything, file_name = write_crc_storage.unset_declared_crc(file_name)
             if not removed_anything:
                 logging.info("%s has no CRC tags to remove." % file_name)
 
