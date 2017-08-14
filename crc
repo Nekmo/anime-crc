@@ -271,7 +271,7 @@ def compute_crc(filename):
     while True:
         # While there is some data remaining...
         data = file.read(buff_size)
-        done += buff_size
+        done += len(data)
         if progress_reporting:
             # Show progress
             sys.stderr.write("%7d" % (done * 100 / size) + "%" + seq_backspace)
