@@ -413,11 +413,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRC32 generator and checker.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # addcrc32
-    parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='+',
+    parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='*',
                         metavar='<file>',
                         help='Generate CRC32 for files and rename them.')
 
-    parser.add_argument('--delete', dest='delete_crc32_tags', nargs='+',
+    parser.add_argument('--delete', dest='delete_crc32_tags', nargs='*',
                         metavar='<file>',
                         help='Delete CRC32 tags in the specified files.')
 
@@ -498,9 +498,6 @@ if __name__ == '__main__':
             # Check files integrity against existing CRC32 tags
             exit_with_error = check_files(recurse_file_list(args.check))
 
-        if not args.check and not args.add_crc32_tags and not args.delete_crc32_tags:
-            parser.print_help()
-            raise SystemExit(2)
     except KeyboardInterrupt:
         # ^C was pressed in the terminal
         exit_with_error = True
