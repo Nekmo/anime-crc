@@ -2,14 +2,14 @@
 """
 
 CRC32 generator and checker.
- 
-2017 Ago 14 v0.7
+
+2018 Feb 25 v0.8
 
 Requires Python 3.5+.
 
 Copyright (c) 2009 Taoufik El Aoumari (forked from version 0.2, 2009-01-25)
 Copyright (c) 2011 Nekmo
-Copyright (c) 2017 Alicia Boya García (ntrrgc)
+Copyright (c) 2017-2018 Alicia Boya García (ntrrgc)
 
 Original script: http://agafix.org/anime-crc32-checksum-in-linux-v20/
 Modified by nekmo and ntrrgc to add several features:
@@ -31,6 +31,7 @@ Modified by nekmo and ntrrgc to add several features:
 - File entries are written to stdout, progress to stderr
 - Colors and progress reporting are disabled if not in a tty
 - xattr store
+- Add filter for commonly unwanted files and directories, such as .DS_Store
 
 Released under the GPL license http://www.gnu.org/licenses/gpl-3.0.txt
 """
