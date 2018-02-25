@@ -375,6 +375,22 @@ def separate_directories(file_list):
     return files, directories
 
 
+ignore_dir_patterns = [
+    re.compile(r"^@eaDir$"),
+    re.compile(r"^\.Trash-[0-9]+$"),
+    re.compile(r"^#recycle$"),
+    re.compile(r"^__MACOSX$"),
+]
+
+
+ignore_file_patterns = [
+    re.compile(r"^desktop\.ini$"),
+    re.compile(r"^Thumbs\.db$"),
+    re.compile(r"^\.DS_Store$"),
+    re.compile(r"^\.directory$"),
+]
+
+
 def recurse_file_list(original_list):
     original_files, original_dirs = separate_directories(original_list)
 
@@ -383,10 +399,21 @@ def recurse_file_list(original_list):
 
     found_files = []
     for rootdir in original_dirs:
-        for root, subFolders, files in os.walk(rootdir):
+        for root, sub_folders, files in os.walk(rootdir):
             files.sort(key=cmp_to_key(locale.strcoll))
-            subFolders.sort(key=cmp_to_key(locale.strcoll))
+            sub_folders.sort(key=cmp_to_key(locale.strcoll))
+
+            sub_folders[:] = [
+                folder for folder in sub_folders 
+                if not any(
+                    pattern.match(folder)
+                    for pattern in ignore_dir_patterns
+                )
+            ]
+
             for file in files:
+                if any(pattern.match(file) for pattern in ignore_file_patterns):
+                    continue
                 f = os.path.join(root, file)
                 found_files.append(f)
 
