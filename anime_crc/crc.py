@@ -42,8 +42,8 @@ import os
 import re
 import sys
 import zlib
-import argparse
 from typing import Union, Tuple, List
+
 
 locale.setlocale(locale.LC_ALL, "")
 stdout_is_tty = os.isatty(sys.stdout.fileno())
@@ -132,7 +132,7 @@ class CRCStorageInterface(object):
         raise NotImplementedError
 
     def unset_declared_crc(self, file_name: str) -> Tuple[bool, str]:
-        """:return whether a tag has been removed, file name after removing 
+        """:return whether a tag has been removed, file name after removing
         the tag """
         raise NotImplementedError
 
@@ -254,7 +254,7 @@ class XAttrCRCStorage(CRCStorageInterface):
             c_null=c_null, **locals())
 
 
-def compute_crc(filename):
+def compute_crc(filename, progress_reporting):
     """Calculate the CRC32 checksum of a file.
     Returns the CRC32 code as an hexadecimal string."""
 
@@ -286,9 +286,10 @@ def compute_crc(filename):
     return "%.8X" % crc
 
 
-def check_files(files) -> bool:
+def check_files(files, warn_no_crc, read_from, progress_reporting) -> bool:
     """Check CRC32 for the provided file name list."""
     mismatch_found = False
+    read_crc_storage = ChainCRCStorage(read_from)
 
     for file_name in files:
         try:
@@ -302,7 +303,7 @@ def check_files(files) -> bool:
                 continue
 
             # Calculate CRC32
-            computed_crc = compute_crc(file_name)
+            computed_crc = compute_crc(file_name, progress_reporting)
             if not computed_crc:
                 continue  # empty file
 
@@ -327,8 +328,11 @@ def check_files(files) -> bool:
     return mismatch_found
 
 
-def add_crc32_tags(files):
+def add_crc32_tags(files, read_from, write_to, progress_reporting):
     """Add a CRC32 code to files missing it."""
+    read_crc_storage = ChainCRCStorage(read_from)
+    write_crc_storage = ChainCRCStorage(write_to)
+
     for file_name in files:
         try:
             # Try to read existing CRC32
@@ -339,7 +343,7 @@ def add_crc32_tags(files):
                 logging.debug("{file_name} already has a CRC declared with the '{store_name}' store.".format(**locals()))
                 continue
 
-            computed_crc = compute_crc(file_name)
+            computed_crc = compute_crc(file_name, progress_reporting)
             if not computed_crc:
                 continue
 
@@ -350,8 +354,9 @@ def add_crc32_tags(files):
             continue
 
 
-def delete_crc32_tags(files):
+def delete_crc32_tags(files, write_to):
     """Remove CRC32 codes to the specified files (danger!)"""
+    write_crc_storage = ChainCRCStorage(write_to)
     for file_name in files:
         try:
             removed_anything, file_name = write_crc_storage.unset_declared_crc(file_name)
@@ -392,7 +397,7 @@ ignore_file_patterns = [
 ]
 
 
-def recurse_file_list(original_list):
+def recurse_file_list(original_list, recurse_files):
     original_files, original_dirs = separate_directories(original_list)
 
     if not recurse_files:
@@ -405,7 +410,7 @@ def recurse_file_list(original_list):
             sub_folders.sort(key=cmp_to_key(locale.strcoll))
 
             sub_folders[:] = [
-                folder for folder in sub_folders 
+                folder for folder in sub_folders
                 if not any(
                     pattern.match(folder)
                     for pattern in ignore_dir_patterns
@@ -435,101 +440,3 @@ def parse_store_list(string_list: str) -> List[CRCStorageInterface]:
 
         ret.append(stores[store_name]())
     return ret
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='CRC32 generator and checker.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    # addcrc32
-    parser.add_argument('-a', '--addcrc32', dest='add_crc32_tags', nargs='*',
-                        metavar='<file>',
-                        help='Generate CRC32 for files and rename them.')
-
-    parser.add_argument('--delete', dest='delete_crc32_tags', nargs='*',
-                        metavar='<file>',
-                        help='Delete CRC32 tags in the specified files.')
-
-    # Recursive
-    parser.add_argument('-r', '--recursive', dest='recursive',
-                        action='store_const',
-                        const=True, default=False,
-                        help='Explore directories recursively.')
-    # log level
-    parser.add_argument('--debug', dest='level', action='store_const',
-                        const=logging.DEBUG, default=logging.INFO,
-                        help='Set log level to debugging messages.')
-    parser.add_argument('--warning', dest='level', action='store_const',
-                        const=logging.WARNING, default=logging.INFO,
-                        help='Set log level to warnings (hides successful files).')
-
-    parser.add_argument('--no-warn-missing-xattr-ext', action='store_const',
-                        const=True, default=False,
-                        help="Don't warn of missing python3-xattr optional dependency.")
-
-    parser.add_argument('--warn-no-crc', action='store_const',
-                        const=True, default=False,
-                        help="Show a warning if no CRC tags are found in a file.")
-
-    parser.add_argument('-n', '--no-progress', action='store_const',
-                        const=True, default=False,
-                        help="Disable progress reporting, even if connected to a tty.")
-
-    # Stores
-    parser.add_argument('--read-from', type=parse_store_list,
-                        metavar='<stores>',
-                        default="filename,xattr" if python_xattr_available else "filename",
-                        help="A comma-separated list of tag stores used for checking integrity. "
-                             "First successful read is used.")
-
-    parser.add_argument('--write-to', type=parse_store_list,
-                        metavar='<stores>',
-                        default="filename",
-                        help="A comma-separated list of tag stores used for writing CRC tags. "
-                             "Tags are written in every tag store specified.")
-
-    # check
-    parser.add_argument('check', nargs='*', metavar='<file>',
-                        help='Check CRC32 of files.')
-
-    args = parser.parse_args()
-
-    # Set log level
-    logging.basicConfig(level=args.level, format='%(levelname)-8s %(message)s',
-                        stream=sys.stdout)
-
-    if not python_xattr_available and not args.no_warn_missing_xattr_ext:
-        logging.warning(
-            "python3-xattr is not installed, no 'xattr' store support.")
-
-    recurse_files = args.recursive
-
-    warn_no_crc = args.warn_no_crc
-
-    progress_reporting = stdout_is_tty and stderr_is_tty and not args.no_progress
-
-    read_crc_storage = ChainCRCStorage(args.read_from)
-    write_crc_storage = ChainCRCStorage(args.write_to)
-
-    exit_with_error = False
-    try:
-        if args.add_crc32_tags:
-            # Add CRC32 to files
-            add_crc32_tags(recurse_file_list(args.add_crc32_tags))
-
-        if args.delete_crc32_tags:
-            # Remove CRC32 tags
-            delete_crc32_tags(recurse_file_list(args.delete_crc32_tags))
-
-        if args.check:
-            # Check files integrity against existing CRC32 tags
-            exit_with_error = check_files(recurse_file_list(args.check))
-
-    except KeyboardInterrupt:
-        # ^C was pressed in the terminal
-        exit_with_error = True
-
-    if progress_reporting:
-        sys.stderr.write(clear_progress)
-
-    if exit_with_error:
-        raise SystemExit(1)
