@@ -109,7 +109,7 @@ classifiers.extend([
 
 setup(
     name=PACKAGE_NAME,
-    version='0.8.0',
+    version='0.9.0',
     packages=[MODULE],
     scripts=scripts,
     include_package_data=True,
