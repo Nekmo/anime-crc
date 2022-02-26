@@ -32,7 +32,7 @@
 anime-crc
 #########
 
-Validate and create CRC checksums for files (ex. anime video [ABCD01234].mkv)
+Validate and create CRC checksums for files (ex. ``anime video [ABCD01234].mkv``)
 
 To **install anime-crc**, run this command in your terminal:
 
