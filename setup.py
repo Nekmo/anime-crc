@@ -109,12 +109,12 @@ classifiers.extend([
 
 setup(
     name=PACKAGE_NAME,
-    version='0.9.0',
+    version='0.9.1',
     packages=[MODULE],
     scripts=scripts,
     include_package_data=True,
 
-    description=__doc__,
+    description=__doc__.strip(),
     long_description=open(readme, 'r').read(),
     keywords=KEYWORDS,
     download_url=PACKAGE_DOWNLOAD_URL,
